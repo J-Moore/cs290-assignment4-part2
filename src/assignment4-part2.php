@@ -37,7 +37,11 @@ if (isset($_POST['movie-name'])) {
     $addstmt->bind_param("ssii", $_POST['movie-name'], $_POST['movie-category'], $_POST['movie-length'], $_POST['movie-rented']);
     $addstmt->execute();
     $addstmt->close();
+}
 
+if (isset($_POST['killalldata']) && $_POST['killalldata'] == "42") {
+
+    $killstmt = $mysqli->query("TRUNCATE TABLE cs290sp2015_rentals");
 }
 ?>
 <!DOCTYPE html>
@@ -79,10 +83,37 @@ if (isset($_POST['movie-name'])) {
       </table>
     </form>
     
+    
+    <br>
+    
+    <!--FILTER MOVIES-->
+    <h1>Filter Movies By Category</h1>
+    <form action="#" method="post">
+      <select name="movie-filter">
+        <option>All Movies</option>
+<?php
+$filtstmt = $mysqli->prepare("SELECT DISTINCT(category) FROM cs290sp2015_rentals");
+
+$filtstmt->execute();
+$filtstmt->bind_result($cat_name);
+$filtstmt->store_result();
+if ($filtstmt->num_rows > 0) {
+// DISPLAY CATEGORIES AS SELECT OPTIONS
+    while ($filtstmt->fetch()) {
+        echo "<option>" . $cat_name . "</option>\n";
+    }
+}
+$filtstmt->close();
+
+?>
+      </select>
+      <input type="submit" value="Filter Movies" />
+    </form>
+    
     <br>
     
     <!-- TABLE THAT SHOWS MOVIES -->
-    <h1>List of Movies:</h1>
+    <h1>List of Movies</h1>
     <table>
       <tbody>
         <tr>
@@ -92,63 +123,86 @@ if (isset($_POST['movie-name'])) {
           <th>Status</th>
         </tr>
 <?php
-
 // GRAB TABLE DATA FOR DISPLAYING
+
 if (!$mysqli || $mysqli->connect_errno) {
     echo "Connection error " . $mysqli->connect_errno . " " . $mysqli->connect_error;
 }
 
-// USING QUERY TO GET TABLE DATA SINCE THERE ARE NO VARIABLE PARAMETERS
+// IF NO FILTER IS SET DISPLAY EVERYTHING
+if (!isset($_POST['movie-filter']) || $_POST['movie-filter'] == "All Movies") {
+    $stmt = $mysqli->prepare("SELECT id, name, category, length, rented FROM cs290sp2015_rentals");
 
-$stmt = $mysqli->prepare("SELECT id, name, category, length, rented FROM cs290sp2015_rentals");
-
-if (!$stmt) {
-    echo "Error Selecting Data from Rentals Table - Prepare Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
+    if (!$stmt) {
+        echo "Error Selecting Data from Rentals Table - Prepare Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
+    }
 } else {
-    if (!$stmt->execute()) {
-        echo "Error executing Select on Rentals Table - Execute Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
-    } else {
-        if (!$stmt->bind_result($mov_id, $mov_name, $mov_category, $mov_length, $mov_rented)) {
-            echo "Error executing Select on Rentals Table - Execute Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
-        } else {
-            $stmt->store_result();
-            if ($stmt->num_rows > 0) {
-            // DISPLAY TABLE INFO
-                while ($stmt->fetch()) {
-                    echo "<tr>\n<td>" . $mov_name
-                     . "</td>\n<td>" . $mov_category
-                     . "</td>\n<td>" . $mov_length
-                     . "</td>\n";
-                     
-                    if ($mov_rented == 0) {
-                        echo "<td>Available</td>\n";
-                    } else {
-                        echo "<td>Checked Out</td>\n";
-                    }
-                    
-                    // delete button
-                    echo '<td><form name="Delete This" action="#" method="post">';
-                    echo '<input type="hidden" name="delete" value=' . $mov_id . '>';
-                    echo '<input type="submit" value="Delete">';
-                    echo '</form>';
-                    
-                    // change status button
-                    echo '<td><form name="Change Status" action="#" method="post">';
-                    echo '<input type="hidden" name="update-id" value=' . $mov_id . '>';
-                    echo '<input type="hidden" name="update-value" value=' . !$mov_rented . '>';
-                    echo '<input type="submit" value="Check In/Out">';
-                    echo '</form>';
-                }
-            }
-            
-            $stmt->close();
-        }
+
+// OTHERWISE BIND PREPARE STATEMENT BASED ON CATEGORY FILTER
+    $stmt = $mysqli->prepare("SELECT id, name, category, length, rented
+        FROM cs290sp2015_rentals
+        WHERE category=?");
+    if (!$stmt) {
+        echo "Error Selecting Data from Rentals Table - Prepare Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
+    }
+    
+    if (!$stmt->bind_param("s", $_POST['movie-filter'])) {
+        echo "Error binding category filter on select statement - Bind Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
     }
 }
+    
+if (!$stmt->execute()) {
+    echo "Error executing Select on Rentals Table - Execute Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
+}
+
+if (!$stmt->bind_result($mov_id, $mov_name, $mov_category, $mov_length, $mov_rented)) {
+    echo "Error executing Select on Rentals Table - Execute Failed: " . $mysqli->connect_errno . " " . $mysqli->connect_error;
+}
+
+$stmt->store_result();
+if ($stmt->num_rows > 0) {
+// DISPLAY TABLE INFO
+    while ($stmt->fetch()) {
+        echo "<tr>\n<td>" . $mov_name
+           . "</td>\n<td>" . $mov_category
+           . "</td>\n<td>" . $mov_length
+           . "</td>\n";
+                     
+        if ($mov_rented == 0) {
+            echo "<td>Available</td>\n";
+        } else {
+            echo "<td>Checked Out</td>\n";
+        }
+
+        // delete button
+        echo '<td><form name="Delete This" action="#" method="post">';
+        echo '<input type="hidden" name="delete" value=' . $mov_id . '>';
+        echo '<input type="submit" value="Delete">';
+        echo '</form>';
+
+        // change status button
+        echo '<td><form name="Change Status" action="#" method="post">';
+        echo '<input type="hidden" name="update-id" value=' . $mov_id . '>';
+        echo '<input type="hidden" name="update-value" value=' . !$mov_rented . '>';
+        echo '<input type="submit" value="Check In/Out">';
+        echo '</form>';
+    }
+}
+            
+$stmt->close();
+
 ?>
       </tbody>
     </table>
-
+    
+    <br>
+    
+    <!--ERASE ALL MOVIES IN DATABASE-->
+    <h1>ERASE TABLE DATA</h1>
+    <form name="Delete All" action="#" method="post">
+      <input type="hidden" name="killalldata" value="42" />
+      <input type="submit" value="DELETE ALL VIDEOS" />
+    </form>
 
   </body>
 </html>
